@@ -13,7 +13,6 @@ import (
 	"encoding/hex"
 	"sync"
 
-	
 	ps "github.com/kasyap1234/url-shortner-microservice/proto/stats"
 	pb "github.com/kasyap1234/url-shortner-microservice/proto/url"
 	"github.com/redis/go-redis/v9"
@@ -21,7 +20,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	
+
 	"net"
 )
 
@@ -143,32 +142,39 @@ func (s *URLShortenerServiceServer) ResolveURL(ctx context.Context, req *pb.Reso
 // 	defer conn.Close()
 
 // }
-func main(){
+func main() {
 	var err error
-	db,err = gorm.Open(postgres.Open("postgres://postgres:postgres@localhost:5432/postgres"),&gorm.Config{})
-	if err !=nil {
-		log.Fatalf("failed to connect to database: %v",err)
+	const urlServicePort = ":50051"
+
+	db, err = gorm.Open(postgres.Open("postgres://postgres:postgres@localhost:5432/postgres"), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
 	}
 	db.AutoMigrate(&URL{})
 	dragonflyClient = redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
 	})
-	conn,err := grpc.NewClient("localhost:50052",grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err !=nil {
-		log.Fatalf("failed to connect to stats service: %v",err)
+	conn, err := grpc.NewClient("localhost:50052", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("failed to connect to stats service: %v", err)
 	}
 	statsClient := ps.NewStatsServiceClient(conn)
-	
+
 	server := &URLShortenerServiceServer{
-		statsClient: statsClient,
-		db: db,
+		statsClient:     statsClient,
+		db:              db,
 		dragonflyClient: dragonflyClient,
-}
-lis, err := net.Listen("tcp", urlServicePort)
-gprcServer :=grpc.NewServer()
-   pb.RegisterURLShortenerServiceServer(grpcServer,server)
-   if err := grpcServer.Serve(lis); err !=nil {
-		log.Fatalf("failed to serve: %v",err)
-   }
+	}
+	grpcServer := grpc.NewServer()
+	lis, err := net.Listen("tcp", urlServicePort)
+	if err !=nil {
+		log.Fatalf("failed to listen: %v", err)
+
+	}
+	pb.RegisterURLShortenerServiceServer(grpcServer, server)
+	
+	if err := grpcServer.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
 
 }
