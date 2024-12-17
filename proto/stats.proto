@@ -1,0 +1,22 @@
+syntax= "proto3";
+package stats ; 
+option go_package = "proto/stats";
+
+service StatsService{
+    rpc IncrementAccessCount(IncrementAccessCountRequest) returns (IncrementAccessCountResponse);
+    rpc GetAccessCount(GetAccessCountRequest) returns (GetAccessCountResponse);
+
+}
+message IncrementAccessCountRequest{
+    string short_url=1; 
+}
+message IncrementAccessCountResponse{
+    bool success=1; 
+
+}
+message GetAccessCountRequest{
+    string short_url=1; 
+}
+message GetAccessCountResponse{
+    int64 access_count=1; 
+}
