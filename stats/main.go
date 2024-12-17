@@ -25,8 +25,6 @@ type StatsServiceServer struct {
 	mu sync.Mutex
 }
 
-
-
 func (s *StatsServiceServer) IncrementAccessCount(ctx context.Context, req *pb.IncrementAccessCountRequest) (*pb.IncrementAccessCountResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -48,12 +46,7 @@ func (s *StatsServiceServer) IncrementAccessCount(ctx context.Context, req *pb.I
 }
 
 func main() {
-	var err error
 
-	if err != nil {
-
-	}
-	db.AutoMigrate(&Stats{})
 	listener, err := net.Listen("tcp", ":50052")
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
@@ -64,6 +57,7 @@ func main() {
 	statsServer := &StatsServiceServer{
 		db: db,
 	}
+	db.AutoMigrate(Stats{})
 
 	// registering the microservice ;
 	pb.RegisterStatsServiceServer(grpcServer, statsServer)
