@@ -13,7 +13,7 @@ import (
 	"encoding/hex"
 	"sync"
 
-	"github.com/go-chi/chi/v5"
+	
 	ps "github.com/kasyap1234/url-shortner-microservice/proto/stats"
 	pb "github.com/kasyap1234/url-shortner-microservice/proto/url"
 	"github.com/redis/go-redis/v9"
@@ -21,6 +21,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	
+	"net"
 )
 
 var db *gorm.DB
@@ -30,7 +32,8 @@ var mu sync.Mutex
 
 // Base62 characters
 const base62Chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-//URL shortening ; 
+
+//URL shortening ;
 
 // Hash the URL using MD5 and convert to Base62
 func shortenURL(longURL string) string {
@@ -57,7 +60,8 @@ func base62Encode(input string) string {
 
 	return result.String()
 }
-// defining URL for postgresql 
+
+// defining URL for postgresql
 
 type URL struct {
 	ID        uint   `gorm:"primaryKey"`
@@ -65,11 +69,17 @@ type URL struct {
 	LongURL   string
 	CreatedAt time.Time
 }
-// pb.UnimplementedURLShortenerServiceServer for covering all the bases of grpc (failures,error success responses); 
+
+// pb.UnimplementedURLShortenerServiceServer for covering all the bases of grpc (failures,error success responses);
 type URLShortenerServiceServer struct {
 	pb.UnimplementedURLShortenerServiceServer
+	statsClient     ps.StatsServiceClient
+	db              *gorm.DB
+	dragonflyClient *redis.Client
+	mu              sync.Mutex
 }
-// actual shortening url function 
+
+// actual shortening url function
 
 func (s *URLShortenerServiceServer) ShortenURL(ctx context.Context, req *pb.ShortenURLRequest) (*pb.ShortenURLResponse, error) {
 	shortURL := shortenURL(req.LongUrl)
@@ -98,6 +108,7 @@ func (s *URLShortenerServiceServer) ShortenURL(ctx context.Context, req *pb.Shor
 	}, nil
 
 }
+
 // get the long url from the short url (or resolve the url)
 func (s *URLShortenerServiceServer) ResolveURL(ctx context.Context, req *pb.ResolveURLRequest) (*pb.ResolveURLResponse, error) {
 	mu.Lock()
@@ -115,25 +126,49 @@ func (s *URLShortenerServiceServer) ResolveURL(ctx context.Context, req *pb.Reso
 
 	}
 	dragonflyClient.Set(ctx, req.ShortUrl, url.LongURL, 10*time.Minute)
-	incrementAccessCount(req.ShortUrl)
+	s.statsClient.IncrementAccessCount(ctx, &ps.IncrementAccessCountRequest{ShortUrl: req.ShortUrl})
 
 	return &pb.ResolveURLResponse{
 		LongUrl: url.LongURL,
 	}, nil
 }
 
-func incrementAccessCount(shortURL string) {
-conn,err :=grpc.NewClient("localhost:50052",grpc.WithTransportCredentials(insecure.NewCredentials()))
+// func incrementAccessCount(shortURL string) {
+// 	conn, err := grpc.NewClient("localhost:50052", grpc.WithTransportCredentials(insecure.NewCredentials()))
 
-if err !=nil {
-	log.Fatalf("failed to connect to stats service: %v",err)
-	return 
+// 	if err != nil {
+// 		log.Fatalf("failed to connect to stats service: %v", err)
+// 		return
+// 	}
+// 	defer conn.Close()
+
+// }
+func main(){
+	var err error
+	db,err = gorm.Open(postgres.Open("postgres://postgres:postgres@localhost:5432/postgres"),&gorm.Config{})
+	if err !=nil {
+		log.Fatalf("failed to connect to database: %v",err)
+	}
+	db.AutoMigrate(&URL{})
+	dragonflyClient = redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+	conn,err := grpc.NewClient("localhost:50052",grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err !=nil {
+		log.Fatalf("failed to connect to stats service: %v",err)
+	}
+	statsClient := ps.NewStatsServiceClient(conn)
+	
+	server := &URLShortenerServiceServer{
+		statsClient: statsClient,
+		db: db,
+		dragonflyClient: dragonflyClient,
 }
-defer conn.Close()
-statsClient :=ps.NewStatsServiceClient(conn); 
-_,err =statsClient.IncrementAccessCount(context.Background(),&ps.IncrementAccessCountRequest{ShortUrl: shortURL})
-if err !=nil {
-	log.Printf("failed to increment access count: %v",err)
-}
+lis, err := net.Listen("tcp", urlServicePort)
+gprcServer :=grpc.NewServer()
+   pb.RegisterURLShortenerServiceServer(grpcServer,server)
+   if err := grpcServer.Serve(lis); err !=nil {
+		log.Fatalf("failed to serve: %v",err)
+   }
 
 }
