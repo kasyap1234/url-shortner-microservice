@@ -44,7 +44,13 @@ func (s *StatsServiceServer) IncrementAccessCount(ctx context.Context, req *pb.I
 	}
 	return &pb.IncrementAccessCountResponse{Success: true}, nil
 }
-
+func (s *StatsServiceServer) GetAccessCount(ctx context.Context, req *pb.GetAccessCountRequest) (*pb.GetAccessCountResponse, error) {
+	var stats Stats
+	if err := s.db.First(&stats, "short_url = ?", req.ShortUrl).Error; err != nil {
+		return nil, err
+	}
+	return &pb.GetAccessCountResponse{AccessCount: stats.Count}, nil
+}
 func main() {
 
 	listener, err := net.Listen("tcp", ":50052")
